@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>簡易程式編輯器</title>
+    <style>
+        body { font-family: 'Microsoft JhengHei', Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #2c3e50; margin-bottom: 25px; text-align: center; font-size: 28px; }
+        #codeEditor { width: 100%; height: 300px; padding: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-family: 'Consolas', monospace; font-size: 14px; resize: vertical; background-color: #f8f9fa; transition: border-color 0.3s; }
+        #codeEditor:focus { outline: none; border-color: #4CAF50; box-shadow: 0 0 5px rgba(76,175,80,0.2); }
+        #runCodeButton { background-color: #4CAF50; color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background-color 0.3s; margin: 20px 0; }
+        #runCodeButton:hover { background-color: #45a049; }
+        #executionResult { background: #2c3e50; color: #ecf0f1; padding: 20px; border-radius: 8px; margin-top: 20px; white-space: pre-wrap; text-align: left; font-family: 'Consolas', monospace; font-size: 14px; min-height: 100px; }
+        .loading { opacity: 0.7; pointer-events: none; }
+        .intro-section { margin-bottom: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; }
+        .syntax-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+        .syntax-table th, .syntax-table td { border: 1px solid #e0e0e0; padding: 10px; text-align: left; }
+        .syntax-table th { background-color: #2c3e50; color: white; }
+        #inputSection { margin-top: 10px; display: none; }
+        #userInput { width: 70%; padding: 8px; border: 2px solid #e0e0e0; border-radius: 5px; font-family: 'Consolas', monospace; }
+        #submitInput { background-color: #4CAF50; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; margin-left: 10px; }
+        #submitInput:hover { background-color: #45a049; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="intro-section">
+            <h2>基本介紹</h2>
+            <p>這裡是基本介紹的內容，你可以自行修改這部分的文字。</p>
+            <p>這是一個簡單的程式編輯器範例，可以用來說明功能與使用方式。</p>
+        </div>
+
+        <h2>🚀 簡易程式編輯器</h2>
+        <textarea id="codeEditor" placeholder="在此輸入程式碼...
+# 例如：
+讀取使用者輸入字串，並儲存至變數「in」。
+設定一指定名稱變數的值，名稱與值分別為「in」，變數「in」轉型「數字」。
+初始化一個指定名稱和長度的陣列，名稱和長度分別為「arr」，變數「in」。
+設定一指定名稱變數的值，名稱與值分別為「i」，0。
+重複並持續驗證右方表達式之真實性，條件滿足時持續執行特定操作（變數「i」轉型「數字」小於變數「in」）。
+設定指定名稱陣列其中一項的值，名稱、項數與值分別為「arr」，變數「i」，變數「i」乘以變數「i」。
+設定一指定名稱變數的值，名稱與值分別為「i」，變數「i」加上1。
+結束以上判斷式或迴圈。
+設定一指定名稱變數的值，名稱與值分別為「i」，0。
+重複並持續驗證右方表達式之真實性，條件滿足時持續執行特定操作（變數「i」轉型「數字」小於變數「in」）。
+如果右方判斷式結果為真，執行以下特定操作（陣列「arr」的索引（變數「i」））取模10等於6。
+設定一指定名稱變數的值，名稱與值分別為「i」，變數「i」加上1。
+捨棄以下迴圈內容，直接繼續下一輪迴圈。
+結束以上判斷式或迴圈。
+要求在終端機（或控制台）輸出陣列「arr」的索引（變數「i」）。
+設定一指定名稱變數的值，名稱與值分別為「i」，變數「i」加上1。
+結束以上判斷式或迴圈。"></textarea>
+        <button id="runCodeButton">執行程式碼 ▶</button>
+        <pre id="executionResult">執行結果將顯示在這裡...</pre>
+        <div id="inputSection">
+            <input type="text" id="userInput" placeholder="請輸入...">
+            <button id="submitInput">送出輸入</button>
+        </div>
+
+        <table class="syntax-table">
+            <thead>
+                <tr>
+                    <th>python語法</th>
+                    <th>ACcode語法</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>print('hello world')</td>
+                    <td>要求在終端機（或控制台）輸出('hello world')</td>
+                </tr>
+                <tr>
+                    <td>a+b</td>
+                    <td>在做數字運算要求數字變數a <加上> 數字變數b</td>
+                </tr>
+                <tr>
+                    <td>a-b</td>
+                    <td>在做數字運算要求數字變數a <減去> 數字變數b</td>
+                </tr>
+                <tr>
+                    <td>a*b</td>
+                    <td>在做數字運算要求數字變數a <乘以> 數字變數b</td>
+                </tr>
+                <tr>
+                    <td>a/b</td>
+                    <td>在做數字運算要求數字變數a <除以> 數字變數b</td>
+                </tr>
+                <tr>
+                    <td>a%b</td>
+                    <td>在做數字運算要求數字變數a <取模> 數字變數b</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const runButton = document.getElementById('runCodeButton');
+        const editor = document.getElementById('codeEditor');
+        const result = document.getElementById('executionResult');
+        const inputSection = document.getElementById('inputSection');
+        const userInput = document.getElementById('userInput');
+        const submitInput = document.getElementById('submitInput');
+        let sessionId = null;
+    
+        // 在 fetch 請求加入 timeout 處理
+        const fetchWithTimeout = (url, options, timeout = 10000) => {
+            return Promise.race([
+                fetch(url, options),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('請求逾時')), timeout)
+                )
+            ]);
+        }
+    
+        runButton.addEventListener('click', async () => {
+            const code = editor.value;
+            runButton.classList.add('loading');
+            runButton.textContent = '執行中...';
+            result.textContent = '處理中...';
+            inputSection.style.display = 'none'; // 預設隱藏輸入框
+    
+            try {
+                const response = await fetchWithTimeout('/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+    
+                const resultData = await response.json();
+                sessionId = resultData.sessionId;
+                handleResponse(resultData);
+            } catch (error) {
+                result.textContent = '前端請求錯誤或連線失敗。';
+                resetButton();
+            }
+        });
+    
+        submitInput.addEventListener('click', async () => {
+            const inputValue = userInput.value.trim();
+            if (!inputValue || !sessionId) return;
+    
+            try {
+                const response = await fetch('/submit_input', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId, input: inputValue })
+                });
+    
+                const resultData = await response.json();
+                userInput.value = '';  // 清空輸入框
+                handleResponse(resultData);  // 處理後端回應
+            } catch (error) {
+                result.textContent += '\n輸入處理失敗。';
+            }
+        });
+    
+        function handleResponse(data) {
+            if (data.output) {
+                result.textContent = data.output;
+            }
+    
+            // 根據後端回應顯示或隱藏輸入框
+            if (data.needsInput) {
+                inputSection.style.display = 'block';
+                userInput.focus();  // 聚焦於輸入框
+            } else {
+                inputSection.style.display = 'none';
+                resetButton();
+            }
+    
+            // 處理錯誤
+            if (data.error) {
+                result.textContent += `\n錯誤：${data.error}`;
+                inputSection.style.display = 'none';
+                resetButton();
+            }
+        }
+    
+        function resetButton() {
+            runButton.classList.remove('loading');
+            runButton.textContent = '執行程式碼 ▶';
+            sessionId = null;
+        }
+    </script>
+</body>
+</html>
