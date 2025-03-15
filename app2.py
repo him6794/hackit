@@ -1,112 +1,142 @@
-import sys
-import back
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, render_template
 from io import StringIO
 from multiprocessing import Process, Queue
+import sys
+import back
 import time
-
-app = Flask(__name__, template_folder='templates')
+from threading import Thread
+app = Flask(__name__)
 sessions = {}  # 存放執行中的程式狀態
-
 class InputNeeded(Exception):
-    """ 自定義異常，用於標記需要輸入的情況 """
     pass
 
+class OutputWrapper:
+    def __init__(self, output_queue):
+        self.output_queue = output_queue
+    
+    def write(self, text):
+        if text.strip():  # 避免空內容
+            self.output_queue.put({"output": text})
+    
+    def flush(self):
+        pass
+
 class InputMock:
-    """ 模擬 input() 來攔截 back.py 的輸入 """
     def __init__(self, input_queue, output_queue):
-        self.input_queue = input_queue  # 用於接收主進程的輸入
-        self.output_queue = output_queue  # 用於通知主進程需要輸入
+        self.input_queue = input_queue
+        self.output_queue = output_queue
     
     def readline(self):
-        """ 模擬 input()，若無輸入則通知主進程並等待 """
         self.output_queue.put({"needsInput": True})
-        user_input = self.input_queue.get()  # 等待主進程提供輸入
-        return user_input + '\n'
+        return self.input_queue.get() + '\n'
 
 def run_in_process(session_id, code, input_queue, output_queue):
-    """ 在子進程中執行程式碼 """
     sys.stdin = InputMock(input_queue, output_queue)
-    sys.stdout = StringIO()
+    sys.stdout = OutputWrapper(output_queue)
     try:
         executor = back.Executor()
         executor.execute(code)
-        output = sys.stdout.getvalue()
-        output_queue.put({"output": output, "completed": True})
+        output_queue.put({"completed": True})
     except InputNeeded:
-        output = sys.stdout.getvalue()
-        output_queue.put({"output": output, "needsInput": True})
+        pass
     except Exception as e:
         output_queue.put({"output": str(e), "completed": True})
     finally:
         sys.stdout = sys.__stdout__
         sys.stdin = sys.__stdin__
 
+def output_listener(session_id, output_queue):
+    session = sessions[session_id]
+    while True:
+        try:
+            msg = output_queue.get(timeout=0.1)
+            if 'output' in msg:
+                session["output_buffer"] += msg["output"]
+            if 'needsInput' in msg:
+                print("needsInput", msg)
+                session["needs_input"] = True
+                # 這裡不跳出循環，繼續監聽
+            if 'completed' in msg:
+                session["completed"] = True
+                break
+        except Exception as e:
+            if session['process'].exitcode is not None:
+                break
+            # 這裡加入一個小延遲，避免過度消耗CPU
+            time.sleep(0.01)
+
 @app.route('/')
 def serve_index():
-    return send_from_directory('templates', 'index2.html')
+    return render_template('index2.html')
 
 @app.route('/run', methods=['POST'])
 def run_code():
-    """ 開始執行程式 """
-    session_id = str(len(sessions))  # 產生唯一的 session ID
-    input_queue = Queue()  # 子進程接收輸入的隊列
-    output_queue = Queue()  # 子進程發送結果的隊列
+    session_id = str(len(sessions))
+    input_queue = Queue()
+    output_queue = Queue()
 
-    # 儲存會話資訊
     sessions[session_id] = {
-        "code": request.json['code'],
-        "output": "",
+        "output_buffer": "",  # 用於儲存輸出內容
         "input_queue": input_queue,
         "output_queue": output_queue,
-        "completed": False
+        "process": None,
+        "completed": False,
+        "needs_input": False
     }
 
-    # 啟動子進程
-    process = Process(target=run_in_process, args=(session_id, sessions[session_id]["code"], input_queue, output_queue))
-    sessions[session_id]["process"] = process
-    process.start()
+    p = Process(target=run_in_process, args=(session_id, request.json['code'], input_queue, output_queue))
+    sessions[session_id]["process"] = p
+    p.start()
 
-    # 等待子進程的初步結果
-    result = output_queue.get()
-    sessions[session_id]["output"] += result.get("output", "")
-    if result.get("completed", False):
-        sessions[session_id]["completed"] = True
-        process.join()  # 清理已完成的進程
-        del sessions[session_id]["process"]
+    # 啟動輸出監聽線程
+    listener_thread = Thread(target=output_listener, args=(session_id, output_queue))
+    listener_thread.daemon = True  # 設置為daemon thread，主程序結束時會自動終止
+    listener_thread.start()
+    sessions[session_id]["listener_thread"] = listener_thread  # 保存線程引用以便後續管理
 
-    return jsonify({
-        "sessionId": session_id,
-        "output": sessions[session_id]["output"],
-        "needsInput": result.get("needsInput", False)
-    })
+    return jsonify({"sessionId": session_id})
+
+@app.route('/status/<session_id>')
+def get_status(session_id):
+    session = sessions.get(session_id)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    
+    response = {
+        "output": session["output_buffer"],
+        "needsInput": session["needs_input"],
+        "completed": session["completed"]
+    }
+    
+    session["output_buffer"] = ""  # 清空緩衝
+    
+    return jsonify(response)
 
 @app.route('/submit_input', methods=['POST'])
 def submit_input():
-    """ 接收使用者的輸入並繼續執行 """
-    session_id = request.json['sessionId']
-    user_input = request.json['input']
+    data = request.get_json()
+    print("Received input data:", data)
+    if not data or 'sessionId' not in data or 'input' not in data:
+        return jsonify({"error": "無效的請求格式"}), 400
+
+    session_id = data['sessionId']
+    user_input = data['input']
 
     if session_id not in sessions:
-        return jsonify({"error": "Session not found"}), 400
+        return jsonify({"error": "Session 不存在"}), 404
 
     session = sessions[session_id]
+    
+    # 檢查session是否真的需要輸入
+    if not session.get("needs_input", False):
+        print("Session doesn't need input currently")
+        return jsonify({"error": "當前不需要輸入"}), 401
+
+    print("Submitting input:", user_input)
     session["input_queue"].put(user_input)  # 將輸入發送到子進程
+    session["needs_input"] = False  # 標記輸入已完成
 
-    # 等待子進程的結果
-    result = session["output_queue"].get()
-    session["output"] += result.get("output", "")
-
-    if result.get("completed", False):
-        session["completed"] = True
-        session["process"].join()  # 清理進程
-        del session["process"]
-
-    return jsonify({
-        "sessionId": session_id,
-        "output": session["output"],
-        "needsInput": result.get("needsInput", False)
-    })
+    return jsonify({"message": "輸入已提交"})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000, threaded=False)  # 使用多進程時不需要 threaded=True
+    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)  # 使用threaded模式以提高並發能力
